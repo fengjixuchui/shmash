@@ -1,28 +1,40 @@
+#include <string.h>
+#include <stddef.h>
+#include <unistd.h>
+#include <stdint.h>
+#include <fcntl.h>
+#include <sys/mman.h>
+
 #define SHM_NAME "/shm_heap"
 #define HEAPSIZE 65536
 
 typedef struct shm_chunk
 {
-    bool free;
+    int free;
     size_t size;
-    struct shm_chunk *next, prev = nullptr, nullptr;
+    struct shm_chunk *next;
+    struct shm_chunk *prev;
 } shm_chunk;
 
-shm_chunk chunk_start;
+shm_chunk *chunk_start;
 int shmfd;
 
 void *shm_alloc(size_t size)
 {
     shm_chunk *tmp = chunk_start;
-    while (true)
+    while (1)
     {
         if (tmp->free && size <= tmp->size)
         {
             shm_chunk tmp_t = *tmp;
-            tmp->free = true;
+            tmp->free = 1;
             tmp->size = size;
             tmp->next = (shm_chunk *)((uintptr_t) tmp->next - (uintptr_t) size);
-            tmp->next = {false, tmp_t.size - size, tmp_t.next, tmp};
+
+            tmp->next->free = 0;
+            tmp->next->size = tmp_t.size - size;
+            tmp->next->next = tmp_t.next;
+            tmp->next->prev = tmp;
 
             return ((shm_chunk *) tmp) + 1;
         }
@@ -30,7 +42,7 @@ void *shm_alloc(size_t size)
         tmp = tmp->next;
         if (!tmp)
         {
-            return nullptr;
+            return NULL;
         }
     }
 }
@@ -65,7 +77,7 @@ void shm_free(void *ptr)
         }
     }
 
-    start->free = true;
+    start->free = 1;
     start->size = nto_free;
     start->next = tmp;
     memset((start + 1), 0, nto_free);
@@ -73,22 +85,22 @@ void shm_free(void *ptr)
 
 void shm_init()
 {
-    bool creat_new = true;
+    int flags = MAP_SHARED;
     shmfd = shm_open(SHM_NAME, O_CREAT | O_EXCL | O_RDWR, 0666);
     if (shmfd == -1)
     {
         shmfd = shm_open(SHM_NAME, O_RDWR, 0666);
-        creat_new = false;
+        flags = flags | MAP_FIXED;
     }
-    chunk_start = mmap(0, HEAPSIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED, shmfd, 0);
+    chunk_start = mmap(0, HEAPSIZE, PROT_READ | PROT_WRITE, flags, shmfd, 0);
 }
 
-void detach()
+void shm_detach()
 {
-    munmap(chunk_start, HEAPSIZE);
+    munmap((void *) chunk_start, HEAPSIZE);
 }
 
-void close()
+void shm_close()
 {
     close(shmfd);
 }
