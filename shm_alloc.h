@@ -1,3 +1,6 @@
+#define SHM_NAME "/shm_heap"
+#define HEAPSIZE 65536
+
 typedef struct shm_chunk
 {
     bool free;
@@ -5,7 +8,10 @@ typedef struct shm_chunk
     struct shm_chunk *next, prev = nullptr, nullptr;
 } shm_chunk;
 
-void *shm_malloc(size_t size)
+shm_chunk chunk_start;
+int shmfd;
+
+void *shm_alloc(size_t size)
 {
     shm_chunk *tmp = chunk_start;
     while (true)
@@ -63,4 +69,26 @@ void shm_free(void *ptr)
     start->size = nto_free;
     start->next = tmp;
     memset((start + 1), 0, nto_free);
+}
+
+void shm_init()
+{
+    bool creat_new = true;
+    shmfd = shm_open(SHM_NAME, O_CREAT | O_EXCL | O_RDWR, 0666);
+    if (shmfd == -1)
+    {
+        shmfd = shm_open(SHM_NAME, O_RDWR, 0666);
+        creat_new = false;
+    }
+    chunk_start = mmap(0, HEAPSIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED, shmfd, 0);
+}
+
+void detach()
+{
+    munmap(chunk_start, HEAPSIZE);
+}
+
+void close()
+{
+    close(shmfd);
 }
