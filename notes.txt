@@ -1,0 +1,1 @@
+only have meta with allocated chunks
